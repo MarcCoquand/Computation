@@ -23,12 +23,14 @@ export class Computation<I, O> {
     run: (input: I) => Promise<O>;
 
     /**
-     * Map the successful output.
+     * Pure map of the successful output.
      *
      * Intution: Give me a computation from I to O and a way to transform O to N
      * Then I can give you a way to transform I to N.
      * ```
      * (O -> N) -> arrow (I -> O) -> arrow (I -> N)
+     *
+     *
      * I -> O -> N
      * ```
      */
@@ -86,6 +88,10 @@ export class Computation<I, O> {
     /**
      * Perform another computation after the first one, just like .then for
      * promises.
+     *
+     * ```
+     * I -> O -> O2
+     * ```
      */
     andThen = <O2>(computation: Computation<O, O2>): Computation<I, O2> =>
         new Computation(input =>
@@ -95,6 +101,11 @@ export class Computation<I, O> {
     /**
      * Perform a computation on the second input. Useful in conjunction with
      * branch and pair.
+     *
+     * ```
+     * -> D -> D
+     * -> I -> O
+     * ```
      */
     static second = <I, O, D>(
         computation: Computation<I, O>
@@ -106,6 +117,11 @@ export class Computation<I, O> {
     /**
      * Perform a computation on the first input. Useful in conjunction with
      * branch and pair.
+     *
+     * ```
+     * -> I -> O
+     * -> D -> D
+     * ```
      */
     static first = <I, O, D>(
         computation: Computation<I, O>
@@ -122,6 +138,13 @@ export class Computation<I, O> {
      * ```
      * computation.branch(computation)
      * ```
+     * ```
+     *      -> O
+     *    /
+     * I -
+     *    \
+     *      -> O
+     * ```
      */
     static split = <I, O>(
         computation: Computation<I, O>
@@ -135,6 +158,10 @@ export class Computation<I, O> {
      * Add another computation to your computation, creating a new computation
      * that support multiple inputs. Use Computation.runLeft to compute on `I`
      * and Computation.runRight to compute on `I2`.
+     *
+     * ```
+     * I OR I2 -> O OR O2
+     * ```
      */
     add = <I2, O2>(
         computation: Computation<I2, O2>
@@ -154,6 +181,10 @@ export class Computation<I, O> {
      *  Add another computation which yields the same output, creating a new
      *  computation that supports multiple inputs. Use Computation.runLeft to
      *  compute on `I` and Computation.runRight to compute on `I2`.
+     *
+     * ```
+     * I OR I2 -> O
+     * ```
      */
     fanIn = <I2>(
         computation: Computation<I2, O>
@@ -189,6 +220,10 @@ export class Computation<I, O> {
 
     /**
      * Apply a computation on the left argument
+     *
+     * ```
+     * I OR D -> if I then O else D
+     * ```
      */
     static left = <I, O, D>(
         computation: Computation<I, O>
@@ -206,6 +241,10 @@ export class Computation<I, O> {
 
     /**
      * Apply a computation on the right argument
+     *
+     * ```
+     * D OR I -> if I then O else D
+     * ```
      */
     static right = <I, O, D>(
         computation: Computation<I, O>
@@ -242,12 +281,14 @@ export class Computation<I, O> {
     /**
      * Merge two inputs into one
      *
+     * ```
      * I1 -
      *      \
      *        -> O
      *      /
      * I2 -
-     *
+     * ```
+     * Example:
      * ```
      * const getFirstNumber: Computation<I, number> = ...
      * const getSecondNumber: Computation<I, number> = ...

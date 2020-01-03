@@ -16,3 +16,9 @@ catch(e) {
     console.log(e)
 }
 ```
+
+See more documentation in the file src/computation.ts of available methods or
+the paper http://www.cse.chalmers.se/~rjmh/Papers/arrows.pdf.
+
+TODO:
+Add more documentation
