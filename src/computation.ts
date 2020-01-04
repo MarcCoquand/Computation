@@ -1,54 +1,56 @@
-type Either<A, B> = { kind: 'LEFT'; value: A } | { kind: 'RIGHT'; value: B };
-
 /**
- * A Computation is an async pipeline from I (I = Input) to Promise<O> (O = Output).
- * If you have an activity diagram of your system and it uses promises, it might model
- * well with arrows!
+ * A Computation is an async pipeline from I (I = Input) to Promise<O> (O =
+ * Output). So, for example, `Computation<Request,User>` can be read as
+ * `(request: Request) => Promise<User>`.
+ *
+ * If you have a complex activity diagram of your system and it uses promises,
+ * it might model well with computations!
+ *
  *
  * Quote from https://www.haskell.org/arrows/
  *
- * Arrows are a new abstract view of computation, defined by John Hughes. They
- * serve much the same purpose as monads -- providing a common structure for
- * libraries -- but are more general. In particular they allow notions of
- * computation that may be partially static (independent of the input) or may
- * take multiple inputs.
+ * Arrows (Haskell's name for Computation) are a new abstract view of
+ * computation, defined by John Hughes. They serve much the same purpose as
+ * monads -- providing a common structure for libraries -- but are more
+ * general. In particular they allow notions of computation that may be
+ * partially static (independent of the input) or may take multiple inputs.
  *
- * Useful paper:
+ * Related paper:
  * http://www.cse.chalmers.se/~rjmh/Papers/arrows.pdf
  */
 export class Computation<I, O> {
-  /**
-   * Run the computation, resulting in a Promise<O>. Remember to handle errors!
-   */
-  run: (input: I) => Promise<O>;
+  // state is used to keep track if union is left or right. This allows for a
+  // more ergonomic interface rather than using a Either type.
+  private runF: (input: I) => Promise<O>;
 
   /**
-   * Pure map of the successful output.
+   * Transformation of the successful output.
    *
-   * Intution: Give me a computation from I to O and a way to transform O to N
-   * Then I can give you a way to transform I to N.
+   * Intution: Give me a computation from `I` to `O` and a way to transform `O` to `N`
+   * Then I can give you a computation from `I` to `N`.
    * ```
    * (O -> N) -> arrow (I -> O) -> arrow (I -> N)
-   *
-   *
    * I -> O -> N
    * ```
    */
-  mapOutput = <N>(mapper: (output: O) => N): Computation<I, N> =>
-    new Computation(input => this.run(input).then(result => mapper(result)));
+  map = <N>(mapper: (output: O) => N): Computation<I, N> =>
+    new Computation((input: I) =>
+      this.runF(input).then(result => mapper(result))
+    );
 
   /**
-   * A.K.A. precompose or contramap
+   * Transform the input of the computation.
    *
-   * Intuition: Give me a computation from I to O and a way to transform N to I
-   * Then I can give you a way to transform N to O.
+   * Intuition: Give me a computation from `I` to `O` and a way to transform `N` to `I`
+   * Then I can give you a way to computation from `N` to `O`.
    * ```
-   * (N -> I) -> arrow (I -> O) -> arrow (N -> O)
    * N -> I -> O
    * ```
+   * Notice how in the method `map` the arrow `-> N` gets added at the end
+   * whereas in mapInput it gets added at the start `N ->`.
    */
-  mapInput = <N>(mapper: (input: N) => I): Computation<N, O> =>
-    new Computation(input => this.run(mapper(input)));
+  contramap = <N>(mapper: (input: N) => I): Computation<N, O> =>
+    new Computation(input => this.runF(mapper(input)));
 
   /**
    * Run two computations async and collect their results
@@ -56,14 +58,14 @@ export class Computation<I, O> {
    * ```
    *      -> O
    *     /
-   * I -<
+   * I -
    *     \
    *      -> O2
    * ```
    */
   branch = <O2>(computation: Computation<I, O2>): Computation<I, [O, O2]> =>
     new Computation(async input =>
-      Promise.all([this.run(input), computation.run(input)])
+      Promise.all([this.runF(input), computation.runF(input)])
     );
 
   /**
@@ -78,20 +80,20 @@ export class Computation<I, O> {
     computation: Computation<I2, O2>
   ): Computation<[I, I2], [O, O2]> =>
     new Computation(input =>
-      Promise.all([this.run(input[0]), computation.run(input[1])])
+      Promise.all([this.runF(input[0]), computation.runF(input[1])])
     );
 
   /**
-   * Perform another computation after the first one, just like .then for
+   * Perform another computation after the first one, exactly like .then for
    * promises.
    *
    * ```
    * I -> O -> O2
    * ```
    */
-  andThen = <O2>(computation: Computation<O, O2>): Computation<I, O2> =>
+  then = <O2>(computation: Computation<O, O2>): Computation<I, O2> =>
     new Computation(input =>
-      this.run(input).then(output => computation.run(output))
+      this.runF(input).then(output => computation.runF(output))
     );
 
   /**
@@ -99,15 +101,15 @@ export class Computation<I, O> {
    * branch and pair.
    *
    * ```
-   * -> D -> D
-   * -> I -> O
+   * -> Extra -> Extra
+   * -> I     -> O
    * ```
    */
-  static second = <I, O, D>(
+  static second = <I, O, Extra>(
     computation: Computation<I, O>
-  ): Computation<[D, I], [D, O]> =>
+  ): Computation<[Extra, I], [Extra, O]> =>
     new Computation(input =>
-      computation.run(input[1]).then(output => [input[0], output])
+      computation.runF(input[1]).then(output => [input[0], output])
     );
 
   /**
@@ -115,15 +117,15 @@ export class Computation<I, O> {
    * branch and pair.
    *
    * ```
-   * -> I -> O
-   * -> D -> D
+   * -> I     -> O
+   * -> Extra -> Extra
    * ```
    */
-  static first = <I, O, D>(
+  static first = <I, O, Extra>(
     computation: Computation<I, O>
-  ): Computation<[I, D], [O, D]> =>
+  ): Computation<[I, Extra], [O, Extra]> =>
     new Computation(input =>
-      computation.run(input[0]).then(output => [output, input[1]])
+      computation.runF(input[0]).then(output => [output, input[1]])
     );
 
   /**
@@ -146,7 +148,7 @@ export class Computation<I, O> {
     computation: Computation<I, O>
   ): Computation<I, [O, O]> =>
     new Computation(async input => {
-      const result = await computation.run(input);
+      const result = await computation.runF(input);
       return [result, result];
     });
 
@@ -160,37 +162,37 @@ export class Computation<I, O> {
    * ```
    */
   add = <I2, O2>(
-    computation: Computation<I2, O2>
-  ): Computation<Either<I, I2>, Either<O, O2>> =>
+    computation: Computation<I2, O2>,
+    chooser: (input: I | I2) => input is I2
+  ): Computation<I | I2, O | O2> =>
     new Computation(async input => {
-      switch (input.kind) {
-        case 'LEFT':
-          const result1 = await this.run(input.value);
-          return { kind: 'LEFT', value: result1 };
-        case 'RIGHT':
-          const result2 = await computation.run(input.value);
-          return { kind: 'RIGHT', value: result2 };
+      if (chooser(input)) {
+        const result2 = await computation.runF(input);
+        return result2;
+      } else {
+        const result1 = await this.runF(input);
+        return result1;
       }
     });
 
   /**
    *  Add another computation which yields the same output, creating a new
-   *  computation that supports multiple inputs. Use Computation.runLeft to
-   *  compute on `I` and Computation.runRight to compute on `I2`.
+   *  computation that supports multiple inputs. Takes a function which can
+   *  check which computation to use.
    *
    * ```
    * I OR I2 -> O
    * ```
    */
-  fanIn = <I2>(
-    computation: Computation<I2, O>
-  ): Computation<Either<I, I2>, O> =>
+  addInput = <I2>(
+    computation: Computation<I2, O>,
+    chooser: (input: I | I2) => input is I2
+  ): Computation<I | I2, O> =>
     new Computation(input => {
-      switch (input.kind) {
-        case 'LEFT':
-          return this.run(input.value);
-        case 'RIGHT':
-          return computation.run(input.value);
+      if (chooser(input)) {
+        return computation.runF(input);
+      } else {
+        return this.runF(input);
       }
     });
 
@@ -210,69 +212,9 @@ export class Computation<I, O> {
    * }
    * ```
    */
-  constructor(fun: (input: I) => Promise<O>) {
-    this.run = fun;
+  private constructor(fun: (input: I) => Promise<O>) {
+    this.runF = (input: I) => fun(input);
   }
-
-  /**
-   * Apply a computation on the left argument
-   *
-   * ```
-   * I OR D -> if I then O else D
-   * ```
-   */
-  static left = <I, O, D>(
-    computation: Computation<I, O>
-  ): Computation<Either<I, D>, Either<O, D>> =>
-    new Computation(async input => {
-      switch (input.kind) {
-        case 'LEFT':
-          const result1 = await computation.run(input.value);
-          return { kind: 'LEFT', value: result1 };
-        case 'RIGHT':
-          const result2 = await Promise.resolve(input.value);
-          return { kind: 'RIGHT', value: result2 };
-      }
-    });
-
-  /**
-   * Apply a computation on the right argument
-   *
-   * ```
-   * D OR I -> if I then O else D
-   * ```
-   */
-  static right = <I, O, D>(
-    computation: Computation<I, O>
-  ): Computation<Either<D, I>, Either<D, O>> =>
-    new Computation(async input => {
-      switch (input.kind) {
-        case 'LEFT':
-          const result1 = await Promise.resolve(input.value);
-          return { kind: 'LEFT', value: result1 };
-        case 'RIGHT':
-          const result2 = await computation.run(input.value);
-          return { kind: 'RIGHT', value: result2 };
-      }
-    });
-
-  /**
-   * Given a computation that accepts `I1` and `I2`, run it with the value `I1`,
-   * resulting in `O`.
-   */
-  static runLeft = <I1, I2, O>(
-    computation: Computation<Either<I1, I2>, O>,
-    value: I1
-  ) => computation.run({ kind: 'LEFT', value });
-
-  /**
-   * Given a computation that accepts `I1` and `I2`, run it with the value `I2`,
-   * resulting in `O`.
-   */
-  static runRight = <I1, I2, O>(
-    computation: Computation<Either<I1, I2>, O>,
-    value: I2
-  ) => computation.run({ kind: 'RIGHT', value });
 
   /**
    * Merge two inputs into one
@@ -296,4 +238,13 @@ export class Computation<I, O> {
     new Computation((input: [I1, I2]) =>
       Promise.resolve(merger(input[0], input[1]))
     );
+
+  static make = <I, O>(promiseFunction: (input: I) => Promise<O>) => {
+    return new Computation(promiseFunction);
+  };
+
+  /**
+   * Run the computation, resulting in a Promise<O>. Remember to handle errors!
+   */
+  run = (input: I): Promise<O> => this.runF(input);
 }
