@@ -42,12 +42,12 @@ export class Computation<I, O> {
    * Transform the input of the computation.
    *
    * Intuition: Give me a computation from `I` to `O` and a way to transform `N` to `I`
-   * Then I can give you a way to computation from `N` to `O`.
+   * Then I can give you a way to computation from `N` to `O`. In map, `N` gets
+   * added at the end of the pipeline; contramap adds `N` at the
+   * start of the pipeline.
    * ```
    * N -> I -> O
    * ```
-   * Notice how in the method `map` the arrow `-> N` gets added at the end
-   * whereas in mapInput it gets added at the start `N ->`.
    */
   contramap = <N>(mapper: (input: N) => I): Computation<N, O> =>
     new Computation(input => this.runF(mapper(input)));
